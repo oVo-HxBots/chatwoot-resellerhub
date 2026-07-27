@@ -1,0 +1,18 @@
+# This is an example configuration file
+# To learn more, see the full config.yaml reference: https://docs.continue.dev/reference
+
+name: Example Config
+version: 1.0.0
+schema: v1
+
+# Define which models can be used
+# https://docs.continue.dev/customization/models
+models:
+  - name: omniroute auto
+    provider: openai
+    model: auto/coding
+    apiKey: sk-029874fe13c5e797-b81312-877d4b86
+    apiBase: https://omni.50sec.eu.org/v1
+
+
+  
