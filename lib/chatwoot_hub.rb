@@ -2,6 +2,10 @@
 class ChatwootHub
   DEFAULT_BASE_URL = 'https://hub.2.chatwoot.com'.freeze
 
+  class << self
+    attr_writer :license_provider
+  end
+
   def self.base_url
     DEFAULT_BASE_URL
   end
@@ -37,15 +41,11 @@ class ChatwootHub
   end
 
   def self.pricing_plan
-    return 'community' unless ChatwootApp.enterprise?
-
-    InstallationConfig.find_by(name: 'INSTALLATION_PRICING_PLAN')&.value || 'community'
+    license_provider.pricing_plan
   end
 
   def self.pricing_plan_quantity
-    return 0 unless ChatwootApp.enterprise?
-
-    InstallationConfig.find_by(name: 'INSTALLATION_PRICING_PLAN_QUANTITY')&.value || 0
+    license_provider.pricing_plan_quantity
   end
 
   def self.support_config
@@ -82,18 +82,26 @@ class ChatwootHub
     model.last&.id || 0
   end
 
+  def self.license_provider
+    @license_provider ||= build_license_provider
+  end
+
+  def self.reset_license_provider!
+    @license_provider = nil
+  end
+
+  def self.build_license_provider
+    return MockLicenseProvider.new if mock_license_provider?
+
+    HubLicenseProvider.new
+  end
+
+  def self.mock_license_provider?
+    ENV['CHATWOOT_LICENSE_PROVIDER'] == 'mock' && !Rails.env.production?
+  end
+
   def self.sync_with_hub
-    begin
-      info = instance_config
-      info = info.merge(instance_metrics) unless ENV['DISABLE_TELEMETRY']
-      response = RestClient.post(ping_url, info.to_json, { content_type: :json, accept: :json })
-      parsed_response = JSON.parse(response)
-    rescue *ExceptionList::REST_CLIENT_EXCEPTIONS => e
-      Rails.logger.error "Exception: #{e.message}"
-    rescue StandardError => e
-      ChatwootExceptionTracker.new(e).capture_exception
-    end
-    parsed_response
+    license_provider.sync_with_hub
   end
 
   def self.register_instance(company_name, owner_name, owner_email)
@@ -127,6 +135,55 @@ class ChatwootHub
     Rails.logger.error "Exception: #{e.message}"
   rescue StandardError => e
     ChatwootExceptionTracker.new(e).capture_exception
+  end
+
+  class HubLicenseProvider
+    def pricing_plan
+      return 'community' unless ChatwootApp.enterprise?
+
+      InstallationConfig.find_by(name: 'INSTALLATION_PRICING_PLAN')&.value || 'community'
+    end
+
+    def pricing_plan_quantity
+      return 0 unless ChatwootApp.enterprise?
+
+      InstallationConfig.find_by(name: 'INSTALLATION_PRICING_PLAN_QUANTITY')&.value || 0
+    end
+
+    def sync_with_hub
+      begin
+        info = ChatwootHub.instance_config
+        info = info.merge(ChatwootHub.instance_metrics) unless ENV['DISABLE_TELEMETRY']
+        response = RestClient.post(ChatwootHub.ping_url, info.to_json, { content_type: :json, accept: :json })
+        parsed_response = JSON.parse(response)
+      rescue *ExceptionList::REST_CLIENT_EXCEPTIONS => e
+        Rails.logger.error "Exception: #{e.message}"
+      rescue StandardError => e
+        ChatwootExceptionTracker.new(e).capture_exception
+      end
+      parsed_response
+    end
+  end
+
+  class MockLicenseProvider
+    def pricing_plan
+      'enterprise'
+    end
+
+    def pricing_plan_quantity
+      ENV.fetch('CHATWOOT_MOCK_LICENSE_QUANTITY', '999').to_i
+    end
+
+    def sync_with_hub
+      {
+        'version' => Chatwoot.config[:version],
+        'plan' => pricing_plan,
+        'plan_quantity' => pricing_plan_quantity,
+        'chatwoot_support_website_token' => nil,
+        'chatwoot_support_identifier_hash' => nil,
+        'chatwoot_support_script_url' => nil
+      }
+    end
   end
 end
 

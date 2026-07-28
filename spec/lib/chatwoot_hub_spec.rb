@@ -1,10 +1,38 @@
 require 'rails_helper'
 
 describe ChatwootHub do
+  after do
+    described_class.reset_license_provider!
+  end
+
   describe '.base_url' do
     it 'uses the static hub url' do
       expect(described_class::DEFAULT_BASE_URL).to eq('https://hub.2.chatwoot.com')
       expect(described_class.base_url).to eq('https://hub.2.chatwoot.com')
+    end
+  end
+
+  describe '.pricing_plan' do
+    it 'uses the mock provider in non-production when requested' do
+      with_modified_env CHATWOOT_LICENSE_PROVIDER: 'mock' do
+        allow(Rails).to receive(:env).and_return(ActiveSupport::StringInquirer.new('development'))
+
+        expect(described_class.pricing_plan).to eq('enterprise')
+      end
+    end
+  end
+
+  describe '.sync_with_hub' do
+    it 'returns a fully activated mock response in non-production when requested' do
+      with_modified_env CHATWOOT_LICENSE_PROVIDER: 'mock' do
+        allow(Rails).to receive(:env).and_return(ActiveSupport::StringInquirer.new('development'))
+
+        response = described_class.sync_with_hub
+
+        expect(response['plan']).to eq('enterprise')
+        expect(response['plan_quantity']).to eq(999)
+        expect(response['version']).to eq(Chatwoot.config[:version])
+      end
     end
   end
 
