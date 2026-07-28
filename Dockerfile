@@ -2,6 +2,8 @@
 FROM node:24-alpine as node
 FROM ruby:3.4.4-alpine3.21 AS pre-builder
 
+ARG GIT_SHA=unknown
+
 ARG NODE_VERSION="24.13.0"
 ARG PNPM_VERSION="10.2.0"
 ENV NODE_VERSION=${NODE_VERSION}
@@ -87,7 +89,7 @@ RUN if [ "$RAILS_ENV" = "production" ]; then \
   fi
 
 # Generate .git_sha file with current commit hash
-RUN git rev-parse HEAD > /app/.git_sha
+RUN echo "$GIT_SHA" > /app/.git_sha
 
 # Remove unnecessary files
 RUN rm -rf /gems/ruby/3.4.0/cache/*.gem \
